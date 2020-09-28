@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<permissions>
+    <privapp-permissions package="ch.endl.wedaban">
+        <permission name="android.permission.BACKUP"/>
+    </privapp-permissions>
+</permissions>

@@ -1,0 +1,3 @@
+[submodule "libs/sardine/sardine-android"]
+	path = libs/sardine/sardine-android
+	url = https://github.com/ndl/sardine-android.git

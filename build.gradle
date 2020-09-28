@@ -1,0 +1,43 @@
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+
+buildscript {
+    ext.android_gradle_version = '4.0.1'
+    ext.android_junit_version = '1.6.2.0'
+    ext.kotlin_version = '1.4.10'
+    ext.anko_version = '0.10.8'
+    ext.okhttp_version = '4.9.0'
+    ext.androidx_test_runner_version = '1.2.0'
+    ext.mockk_version = '1.10.2'
+    ext.roboelectric_version = '4.4'
+    ext.junit4_version = '4.13'
+    ext.assertk_version = '0.23'
+
+    // These two are the latest versions that don't fail, all subsequent ones fail with the error
+    // `java.lang.ClassFormatError: Absent Code attribute in method that is not native or abstract in class file android/app/backup/BackupTransport`
+    // which seems to be related to the use of hidden APIs? See https://github.com/anggrayudi/android-hidden-api/issues/62, although the issue
+    // is specifically about Roboelectric runner and the failure I observe is in JUnit Platform one - the error looks "close enough".
+    // Note, though, that even with the versions below Gradle's 'test' task doesn't seem to be able to discover the tests.
+    ext.junit_version = '5.5.2'
+    ext.junit_platform_version = '1.5.2'
+
+    repositories {
+        google()
+        jcenter()
+    }
+    dependencies {
+        classpath "com.android.tools.build:gradle:$android_gradle_version"
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+        classpath "de.mannodermaus.gradle.plugins:android-junit5:$android_junit_version"
+
+        // NOTE: Do not place your application dependencies here; they belong
+        // in the individual module build.gradle files
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        jcenter()
+        mavenCentral()
+    }
+}

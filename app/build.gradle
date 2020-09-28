@@ -1,0 +1,95 @@
+apply plugin: "com.android.application"
+apply plugin: "kotlin-android"
+apply plugin: "kotlin-android-extensions"
+apply plugin: "de.mannodermaus.android-junit5"
+
+android {
+    // Use custom SDK with exposed hidden API, see https://github.com/aeab13/android-jar-with-hidden-api
+    // or https://github.com/anggrayudi/android-hidden-api
+    compileSdkVersion 9999
+    defaultConfig {
+        applicationId "ch.endl.wedaban"
+        minSdkVersion 28
+        targetSdkVersion 28
+        versionCode 1
+        versionName "1.0"
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunnerArgument "runnerBuilder", "de.mannodermaus.junit5.AndroidJUnit5Builder"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+        }
+    }
+
+    sourceSets {
+        androidTest {
+            java.srcDirs = ['src/androidTest', 'src/test/java/ch/endl/wedaban/common']
+        }
+    }
+
+    testOptions {
+        unitTests {
+            includeAndroidResources = true
+            all {
+                useJUnitPlatform()
+            }
+        }
+    }
+
+    // See https://stackoverflow.com/questions/44342455/more-than-one-file-was-found-with-os-independent-path-meta-inf-license
+    packagingOptions {
+        exclude "META-INF/DEPENDENCIES"
+        exclude "META-INF/INDEX.LIST"
+        exclude "META-INF/LICENSE.md"
+        exclude "META-INF/LICENSE-notice.md"
+    }
+
+    // Needed for Sardine.
+    compileOptions {
+        targetCompatibility = "8"
+        sourceCompatibility = "8"
+    }
+
+    // Needed for aligning JVM between libs and Kotlin
+    // generated code in tests.
+    tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).all {
+        kotlinOptions {
+            jvmTarget = "1.8"
+        }
+    }
+}
+
+dependencies {
+    implementation project(":sardine")
+    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
+    implementation "androidx.preference:preference:1.0.0"
+    implementation "org.jetbrains.anko:anko:$anko_version"
+
+    testImplementation "org.junit.jupiter:junit-jupiter-api:$junit_version"
+    testImplementation "org.junit.jupiter:junit-jupiter-params:$junit_version"
+    testImplementation "io.mockk:mockk:$mockk_version"
+    testImplementation "org.robolectric:robolectric:$roboelectric_version"
+    // Needed for Roboelectric support in 'vintage' mode.
+    testImplementation "junit:junit:$junit4_version"
+    testImplementation "com.willowtreeapps.assertk:assertk-jvm:$assertk_version"
+
+    testRuntimeOnly "org.junit.jupiter:junit-jupiter-engine:$junit_version"
+    testRuntimeOnly "org.junit.vintage:junit-vintage-engine:$junit_version"
+    testRuntimeOnly "org.junit.platform:junit-platform-runner:$junit_platform_version"
+
+    androidTestImplementation "org.junit.jupiter:junit-jupiter-api:$junit_version"
+    androidTestImplementation "org.junit.jupiter:junit-jupiter-params:$junit_version"
+    androidTestImplementation "de.mannodermaus.junit5:android-test-core:$androidx_test_runner_version"
+
+    androidTestImplementation "io.mockk:mockk:$mockk_version"
+    androidTestImplementation "io.mockk:mockk-android:$mockk_version"
+    androidTestImplementation "com.willowtreeapps.assertk:assertk-jvm:$assertk_version"
+
+    androidTestRuntimeOnly "org.junit.jupiter:junit-jupiter-engine:$junit_version"
+    androidTestRuntimeOnly "org.junit.platform:junit-platform-runner:$junit_platform_version"
+    androidTestRuntimeOnly "de.mannodermaus.junit5:android-test-runner:$androidx_test_runner_version"
+    androidTestRuntimeOnly "androidx.test:runner:$androidx_test_runner_version"
+}

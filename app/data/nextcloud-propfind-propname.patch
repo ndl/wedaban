@@ -1,0 +1,226 @@
+diff --git nextcloud/3rdparty/sabre/dav/lib/DAV/CorePlugin.php nextcloud.patched/3rdparty/sabre/dav/lib/DAV/CorePlugin.php
+index 03b31db..9672032 100644
+--- nextcloud/3rdparty/sabre/dav/lib/DAV/CorePlugin.php
++++ nextcloud.patched/3rdparty/sabre/dav/lib/DAV/CorePlugin.php
+@@ -333,7 +333,14 @@ class CorePlugin extends ServerPlugin {
+         // The only two options for the depth of a propfind is 0 or 1 - as long as depth infinity is not enabled
+         if (!$this->server->enablePropfindDepthInfinity && $depth != 0) $depth = 1;
+ 
+-        $newProperties = $this->server->getPropertiesIteratorForPath($path, $propFindXml->properties, $depth);
++        if ($propFindXml->propName) {
++            $reqPropFindType = PropFind::PROPNAME;
++        } elseif ($propFindXml->allProp) {
++            $reqPropFindType = PropFind::ALLPROPS;
++        } else {
++            $reqPropFindType = null;
++        }
++        $newProperties = $this->server->getPropertiesIteratorForPath($path, $propFindXml->properties, $depth, $reqPropFindType);
+ 
+         // This is a multi-status response
+         $response->setStatus(207);
+diff --git nextcloud/3rdparty/sabre/dav/lib/DAV/PropFind.php nextcloud.patched/3rdparty/sabre/dav/lib/DAV/PropFind.php
+index 0940a1c..9c5cbef 100644
+--- nextcloud/3rdparty/sabre/dav/lib/DAV/PropFind.php
++++ nextcloud.patched/3rdparty/sabre/dav/lib/DAV/PropFind.php
+@@ -103,8 +103,9 @@ class PropFind {
+                 $this->itemsLeft--;
+                 $this->result[$propertyName] = [200, $value];
+             }
+-        }
+-
++        } elseif ($this->requestType === self::PROPNAME) {
++            $this->result[$propertyName] = [200, null];
++       }
+     }
+ 
+     /**
+@@ -258,6 +259,17 @@ class PropFind {
+ 
+     }
+ 
++    /**
++     * Returns true if this was an '{DAV:}propname' request.
++     *
++     * @return bool
++     */
++    function isPropName() {
++
++        return $this->requestType === self::PROPNAME;
++
++    }
++
+     /**
+      * Returns a result array that's often used in multistatus responses.
+      *
+diff --git nextcloud/3rdparty/sabre/dav/lib/DAV/PropertyStorage/Backend/PDO.php nextcloud.patched/3rdparty/sabre/dav/lib/DAV/PropertyStorage/Backend/PDO.php
+index 6f3f1fe..3269906 100644
+--- nextcloud/3rdparty/sabre/dav/lib/DAV/PropertyStorage/Backend/PDO.php
++++ nextcloud.patched/3rdparty/sabre/dav/lib/DAV/PropertyStorage/Backend/PDO.php
+@@ -79,7 +79,7 @@ class PDO implements BackendInterface {
+      */
+     function propFind($path, PropFind $propFind) {
+ 
+-        if (!$propFind->isAllProps() && count($propFind->get404Properties()) === 0) {
++        if (!$propFind->isAllProps() && !$propFind->isPropName() && count($propFind->get404Properties()) === 0) {
+             return;
+         }
+ 
+diff --git nextcloud/3rdparty/sabre/dav/lib/DAV/Server.php nextcloud.patched/3rdparty/sabre/dav/lib/DAV/Server.php
+index f7fcf30..d063627 100644
+--- nextcloud/3rdparty/sabre/dav/lib/DAV/Server.php
++++ nextcloud.patched/3rdparty/sabre/dav/lib/DAV/Server.php
+@@ -895,6 +895,13 @@ class Server extends EventEmitter implements LoggerAwareInterface {
+ 
+         $propertyNames = $propFind->getRequestedProperties();
+         $propFindType = !empty($propertyNames) ? PropFind::NORMAL : PropFind::ALLPROPS;
++        if ($propFind->isPropName()) {
++            $propFindType = PropFind::PROPNAME;
++        } elseif ($propFind->isAllProps() || empty($propertyNames)) {
++            $propFindType = PropFind::ALLPROPS;
++        } else {
++            $propFindType = PropFind::NORMAL;
++        }
+ 
+         foreach ($this->tree->getChildren($path) as $childNode) {
+             if ($path !== '') {
+@@ -954,14 +961,18 @@ class Server extends EventEmitter implements LoggerAwareInterface {
+      * @param int $depth
+      * @return \Iterator
+      */
+-    function getPropertiesIteratorForPath($path, $propertyNames = [], $depth = 0) {
++    function getPropertiesIteratorForPath($path, $propertyNames = [], $depth = 0, $reqPropFindType = null) {
+ 
+         // The only two options for the depth of a propfind is 0 or 1 - as long as depth infinity is not enabled
+         if (!$this->enablePropfindDepthInfinity && $depth != 0) $depth = 1;
+ 
+         $path = trim($path, '/');
+ 
+-        $propFindType = $propertyNames ? PropFind::NORMAL : PropFind::ALLPROPS;
++        if ($reqPropFindType) {
++            $propFindType = $reqPropFindType;
++        } else {
++            $propFindType = $propertyNames ? PropFind::NORMAL : PropFind::ALLPROPS;
++        }
+         $propFind = new PropFind($path, (array)$propertyNames, $depth, $propFindType);
+ 
+         $parentNode = $this->tree->getNodeForPath($path);
+diff --git nextcloud/3rdparty/sabre/dav/lib/DAV/Xml/Request/PropFind.php nextcloud.patched/3rdparty/sabre/dav/lib/DAV/Xml/Request/PropFind.php
+index f1b5b6f..6594264 100644
+--- nextcloud/3rdparty/sabre/dav/lib/DAV/Xml/Request/PropFind.php
++++ nextcloud.patched/3rdparty/sabre/dav/lib/DAV/Xml/Request/PropFind.php
+@@ -26,6 +26,13 @@ class PropFind implements XmlDeserializable {
+      */
+     public $allProp = false;
+ 
++    /**
++     * If this is set to true, this was an 'propname' request.
++     *
++     * @var bool
++     */
++    public $propName = false;
++
+     /**
+      * The property list
+      *
+@@ -69,7 +76,10 @@ class PropFind implements XmlDeserializable {
+                     break;
+                 case '{DAV:}allprop' :
+                     $self->allProp = true;
+-
++                   break;
++                case '{DAV:}propname' :
++                    $self->propName = true;
++                    break;
+             }
+ 
+         }
+diff --git nextcloud/apps/dav/lib/Connector/Sabre/CustomPropertiesBackend.php nextcloud.patched/apps/dav/lib/Connector/Sabre/CustomPropertiesBackend.php
+index f3f685a..631c1e0 100644
+--- nextcloud/apps/dav/lib/Connector/Sabre/CustomPropertiesBackend.php
++++ nextcloud.patched/apps/dav/lib/Connector/Sabre/CustomPropertiesBackend.php
+@@ -125,11 +125,11 @@ class CustomPropertiesBackend implements BackendInterface {
+ 			$this->ignoredProperties
+ 		);
+ 
+-		if (empty($requestedProps)) {
++		if (empty($requestedProps) && !$propFind->isPropName()) {
+ 			return;
+ 		}
+ 
+-		$props = $this->getProperties($node, $requestedProps);
++		$props = $this->getProperties($node, $requestedProps, $propFind->isPropName());
+ 		foreach ($props as $propName => $propValue) {
+ 			$propFind->set($propName, $propValue);
+ 		}
+@@ -196,7 +196,7 @@ class CustomPropertiesBackend implements BackendInterface {
+ 	 * http://www.example.org/namespace#author If the array is empty, all
+ 	 * properties should be returned
+ 	 */
+-	private function getProperties(Node $node, array $requestedProperties) {
++	private function getProperties(Node $node, array $requestedProperties, $isPropName) {
+ 		$path = $node->getPath();
+ 		if (isset($this->cache[$path])) {
+ 			return $this->cache[$path];
+@@ -208,7 +208,7 @@ class CustomPropertiesBackend implements BackendInterface {
+ 		$whereValues = array($this->user, $path);
+ 		$whereTypes = array(null, null);
+ 
+-		if (!empty($requestedProperties)) {
++		if (!empty($requestedProperties) && !$isPropName) {
+ 			// request only a subset
+ 			$sql .= ' AND `propertyname` in (?)';
+ 			$whereValues[] = $requestedProperties;
+@@ -253,7 +253,7 @@ class CustomPropertiesBackend implements BackendInterface {
+ 			' WHERE `userid` = ? AND `propertypath` = ? AND `propertyname` = ?';
+ 
+ 		// TODO: use "insert or update" strategy ?
+-		$existing = $this->getProperties($node, array());
++		$existing = $this->getProperties($node, array(), false);
+ 		$this->connection->beginTransaction();
+ 		foreach ($properties as $propertyName => $propertyValue) {
+ 			// If it was null, we need to delete the property
+diff --git nextcloud/apps/dav/lib/DAV/CustomPropertiesBackend.php nextcloud.patched/apps/dav/lib/DAV/CustomPropertiesBackend.php
+index 99a9f4e..4e00b43 100644
+--- nextcloud/apps/dav/lib/DAV/CustomPropertiesBackend.php
++++ nextcloud.patched/apps/dav/lib/DAV/CustomPropertiesBackend.php
+@@ -125,11 +125,11 @@ class CustomPropertiesBackend implements BackendInterface {
+ 			}
+ 		}
+ 
+-		if (empty($requestedProps)) {
++		if (empty($requestedProps) && !$propFind->isPropName()) {
+ 			return;
+ 		}
+ 
+-		$props = $this->getProperties($path, $requestedProps);
++		$props = $this->getProperties($path, $requestedProps, $propFind->isPropName());
+ 		foreach ($props as $propName => $propValue) {
+ 			$propFind->set($propName, $propValue);
+ 		}
+@@ -191,7 +191,7 @@ class CustomPropertiesBackend implements BackendInterface {
+ 	 * http://www.example.org/namespace#author If the array is empty, all
+ 	 * properties should be returned
+ 	 */
+-	private function getProperties($path, array $requestedProperties) {
++	private function getProperties($path, array $requestedProperties, $isPropName) {
+ 		if (isset($this->cache[$path])) {
+ 			return $this->cache[$path];
+ 		}
+@@ -202,7 +202,7 @@ class CustomPropertiesBackend implements BackendInterface {
+ 		$whereValues = array($this->user, $path);
+ 		$whereTypes = array(null, null);
+ 
+-		if (!empty($requestedProperties)) {
++		if (!empty($requestedProperties) && !$isPropName) {
+ 			// request only a subset
+ 			$sql .= ' AND `propertyname` in (?)';
+ 			$whereValues[] = $requestedProperties;
+@@ -246,7 +246,7 @@ class CustomPropertiesBackend implements BackendInterface {
+ 			' WHERE `userid` = ? AND `propertypath` = ? AND `propertyname` = ?';
+ 
+ 		// TODO: use "insert or update" strategy ?
+-		$existing = $this->getProperties($path, array());
++		$existing = $this->getProperties($path, array(), false);
+ 		$this->connection->beginTransaction();
+ 		foreach ($properties as $propertyName => $propertyValue) {
+ 			// If it was null, we need to delete the property

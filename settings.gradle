@@ -1,0 +1,2 @@
+include ":app", ":sardine"
+project(":sardine").projectDir = file("libs/sardine")
